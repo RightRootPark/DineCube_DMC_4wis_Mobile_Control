@@ -1,0 +1,128 @@
+; 4WS Mobile Robot Control Script
+; 작성일: 2026-01-19
+; 설명: walkthrough.md에 기술된 4WS, Crab, Spot Turn 모드 전환 로직 구현
+;       입력값: in_x (전진), in_y (횡이동), in_c (Yaw/조향)
+;       출력값: Axis 1~5 (가속, RF, RR, LF, LR)
+
+; =========================================================
+; 설정 상수
+; =========================================================
+THRESHOLD = 1.0
+STEER_SPOT = 45.0   ; Spot Turn 시 조향각
+
+; =========================================================
+; 메인 루프 시작
+; =========================================================
+; 4WS Mobile Robot Control Script (Server Mode)
+; 수정일: 2026-01-19
+; 설명: Server Mode 동작 (Port 5009 Listen)
+;       클라이언트로부터 "x,y,c" 형식의 문자열 수신 후 4WS 제어 수행
+
+; =========================================================
+; 설정 상수
+; =========================================================
+THRESHOLD = 1.0
+STEER_SPOT = 45.0
+SERVER_PORT = 5009
+
+; 통신 변수
+h_server = 0     ; 서버 소켓 핸들
+h_client = 0     ; 클라이언트 소켓 핸들
+comm_err = 0     ; 통신 에러 코드
+$msg_in = ""     ; 수신 버퍼
+
+; 초기화
+in_x = 0.0
+in_y = 0.0
+in_c = 0.0
+
+; =========================================================
+; 1. 서버 시작 (Listen)
+; =========================================================
+server_init:
+    TPWrite 2, "Server Starting on Port %d...", SERVER_PORT
+    TCPSStart h_server, SERVER_PORT
+    
+    ; 소켓 생성 실패 시 (음수 반환)
+    IF h_server < 0 THEN
+        TPWrite 2, "Server Start Failed: %d", h_server
+        WaitTime 1
+        GOTO server_init
+    END
+    
+    TPWrite 2, "Server Started. Waiting for Client...", 0
+
+wait_client:
+    ; 클라이언트 접속 대기
+    TCPSAccept h_server, h_client
+    
+    IF h_client < 0 THEN
+        ; 접속 대기 중 에러 또는 타임아웃 등
+        WaitTime 0.1
+        GOTO wait_client
+    END
+    
+    TPWrite 2, "Client Connected! (Handle: %d)", h_client
+
+; =========================================================
+; 메인 루프 (데이터 수신 및 제어)
+; =========================================================
+loop_start:
+    ; -----------------------------------------------------
+    ; 2. 데이터 수신 (Watchdog 적용)
+    ; -----------------------------------------------------
+    $msg_in = ""
+    ; TCPSRead Timeout=0.2s
+    TCPSRead h_client, $msg_in, comm_err, 0.2
+
+    ; (1) 연결 끊김 체크
+    IF comm_err == 0 THEN
+        TPWrite 2, "Client Disconnected", 0
+        ; 안전 정지
+        q_axis_1 = 0
+        q_axis_2 = 0
+        q_axis_3 = 0
+        q_axis_4 = 0
+        q_axis_5 = 0
+        
+        TCPSCClose h_client
+        TCPSStop h_server
+        GOTO server_init
+    END
+
+    ; (2) Watchdog 체크
+    msg_len = Len($msg_in)
+    IF msg_len == 0 THEN
+        ; [Safety Stop]
+        q_axis_1 = 0
+        q_axis_2 = 0
+        q_axis_3 = 0
+        q_axis_4 = 0
+        q_axis_5 = 0
+        GOTO loop_start
+    END
+
+    ; -----------------------------------------------------
+    ; 3. 데이터 파싱 ("accel,rf,rr,lf,lr")
+    ; -----------------------------------------------------
+    SplitStr $token[0], $msg_in, ","
+    
+    ; 5개 값 직접 수신
+    in_accel = Value($token[0])
+    in_rf    = Value($token[1])
+    in_rr    = Value($token[2])
+    in_lf    = Value($token[3])
+    in_lr    = Value($token[4])
+
+    ; -----------------------------------------------------
+    ; 4. 하드웨어 출력 (Driver Mode)
+    ; -----------------------------------------------------
+    ; 상위 제어기에서 계산된 각도를 그대로 적용
+    
+    q_axis_1 = in_accel  ; Accel / Valve
+    q_axis_2 = in_rf     ; RF Steer
+    q_axis_3 = in_rr     ; RR Steer
+    q_axis_4 = in_lf     ; LF Steer
+    q_axis_5 = in_lr     ; LR Steer
+
+    GOTO loop_start

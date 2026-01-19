@@ -1,0 +1,17 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio files
+.vs/
+*.user
+*.suo
+*.userprefs
+
+# Temporary files
+*.tmp
+*.log
+
+# Windows specific
+thumbs.db
+Desktop.ini
