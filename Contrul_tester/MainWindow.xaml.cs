@@ -153,7 +153,7 @@ namespace Contrul_tester
         // We need to sync the boolean states. MainFunction has SetInput(f,b,l,r).
         // Let's keep local bools here just to aggregate MouseDown/Up/Key and then push to MainFunction?
         // OR push immediately.
-        
+
         private bool f, b, l, r;
         private void UpdateInputs() => mainFunc.SetInput(f, b, l, r);
 

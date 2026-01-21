@@ -6,6 +6,13 @@ using System.Threading.Tasks;
 
 namespace Contrul_tester
 {
+    public enum DriveMode
+    {
+        FourWS,
+        Crab,
+        Pivot
+    }
+
     public class MainFunction
     {
         // Events for UI Updates
@@ -39,7 +46,7 @@ namespace Contrul_tester
         private const double ACCEL_RATE = 2.0;
         private const double STEER_RATE = 2.0;
         private const double MAX_SPEED = 100.0;
-        private const double MAX_STEER_4WS = 90.0;
+        private const double MAX_STEER_4WS = 89.0; // Limited to 89.0 to avoid 90-degree singularity
         private const double MAX_STEER_CRAB = 135.0;
         private const double L = 1050.0;
         private const double W = 1050.0;
@@ -198,19 +205,7 @@ namespace Contrul_tester
 
         private void Calculate4WS(double c, out double rf, out double lf, out double rr, out double lr)
         {
-            if (Math.Abs(c) > 89.9)
-            {
-                // 90 deg Turn
-                if (c > 0) // Left
-                {
-                    lf = -45.0; lr = 45.0; rf = 45.0; rr = -45.0;
-                }
-                else // Right
-                {
-                    rf = 45.0; rr = -45.0; lf = -45.0; lr = 45.0;
-                }
-            }
-            else if (Math.Abs(c) > 0.1)
+            if (Math.Abs(c) > 0.1)
             {
                 double radC = c * Math.PI / 180.0;
                 double R_abs = Math.Abs((L / 2.0) / Math.Tan(radC));
