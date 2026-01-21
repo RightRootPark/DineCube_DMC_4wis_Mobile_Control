@@ -1,14 +1,13 @@
-; 4WS Mobile Robot Control Script (Server Mode)
-; 수정일: 2026-01-19
-; 설명: Server Mode 동작 (Port 5009 Listen)
-;       클라이언트로부터 "x,y,c" 형식의 문자열 수신 후 4WS 제어 수행
-
+; Communication Test Script (Simulation Mode)
+; 작성일: 2026-01-20
+; 설명: 로봇 구동 없이 통신 상태 및 변수 변화를 테스트하기 위한 스크립트
+;       입력값: in_x, in_y, in_c (수신만 하고 구동엔 미반영)
+;       출력값: 시뮬레이션된 가상 변수값 (Sine Wave, Counter 등)
+;
 ; =========================================================
 ; 설정 상수
 ; =========================================================
-THRESHOLD = 1.0
-STEER_SPOT = 45.0
-SERVER_PORT = 5009
+SERVER_PORT = 5008
 
 ; 통신 변수
 h_server = 0     ; 서버 소켓 핸들
@@ -17,38 +16,49 @@ comm_err = 0     ; 통신 에러 코드
 $msg_in = ""     ; 수신 버퍼
 $msg_out = ""    ; 송신 버퍼
 
+; 시뮬레이션 변수
+sim_counter = 0.0
+sim_angle = 0.0
+
 ; 초기화
 in_x = 0.0
 in_y = 0.0
-in_c = 0.0
+in_rf = 0.0
+in_rr = 0.0
+in_lf = 0.0
+in_lr = 0.0
+
+; 가상 축 변수 (실제 모터 아님)
+v_axis_1 = 0.0
+v_axis_2 = 0.0
+v_axis_3 = 0.0
+v_axis_4 = 0.0
+v_axis_5 = 0.0
 
 ; =========================================================
 ; 1. 서버 시작 (Listen)
 ; =========================================================
 server_init:
-    TPWrite 2, "Server Starting on Port %d...", SERVER_PORT
+    TPWrite 2, "[TEST] Server Starting on Port %d...", SERVER_PORT
     TCPSStart h_server, SERVER_PORT
     
-    ; 소켓 생성 실패 시 (음수 반환)
     IF h_server < 0 THEN
-        TPWrite 2, "Server Start Failed: %d", h_server
+        TPWrite 2, "[TEST] Server Start Failed: %d", h_server
         WaitTime 1
         GOTO server_init
     END
     
-    TPWrite 2, "Server Started. Waiting for Client...", 0
+    TPWrite 2, "[TEST] Server Started. Waiting for Client...", 0
 
 wait_client:
-    ; 클라이언트 접속 대기
     TCPSAccept h_server, h_client
     
     IF h_client < 0 THEN
-        ; 접속 대기 중 에러 또는 타임아웃 등
         WaitTime 0.1
         GOTO wait_client
     END
     
-    TPWrite 2, "Client Connected! (Handle: %d)", h_client
+    TPWrite 2, "[TEST] Client Connected! (Handle: %d)", h_client
 
 ; =========================================================
 ; 메인 루프 (데이터 수신 및 제어)
@@ -58,19 +68,11 @@ loop_start:
     ; 2. 데이터 수신 (Watchdog 적용)
     ; -----------------------------------------------------
     $msg_in = ""
-    ; TCPSRead Timeout=0.2s
     TCPSRead h_client, $msg_in, comm_err, 0.2
 
     ; (1) 연결 끊김 체크
     IF comm_err == 0 THEN
         TPWrite 2, "Client Disconnected", 0
-        ; 안전 정지
-        q_axis_1 = 0
-        q_axis_2 = 0
-        q_axis_3 = 0
-        q_axis_4 = 0
-        q_axis_5 = 0
-        
         TCPSCClose h_client
         TCPSStop h_server
         GOTO server_init
@@ -78,51 +80,51 @@ loop_start:
 
     ; (2) Watchdog 체크
     msg_len = Len($msg_in)
-    IF msg_len == 0 THEN
-        ; [Safety Stop]
-        q_axis_1 = 0
-        q_axis_2 = 0
-        q_axis_3 = 0
-        q_axis_4 = 0
-        q_axis_5 = 0
-        GOTO loop_start
+    ; 시뮬레이션 모드에서는 Watchdog에 의한 Stop 로직 생략 (통신 테스트 목적)
+    
+    ; -----------------------------------------------------
+    ; 3. 데이터 파싱 (Echo Test)
+    ; -----------------------------------------------------
+    IF msg_len > 0 THEN
+        SplitStr $token[0], $msg_in, ","
+        ; Client Format: "accel,rf,rr,lf,lr"
+        in_accel = Value($token[0])
+        in_rf    = Value($token[1])
+        in_rr    = Value($token[2])
+        in_lf    = Value($token[3])
+        in_lr    = Value($token[4])
+        
+        ; 로그 출력 (디버깅용)
+        ; TPWrite 2, "Recv: %.1f, %.1f", in_accel, in_rf
     END
 
     ; -----------------------------------------------------
-    ; 3. 데이터 파싱 ("accel,rf,rr,lf,lr")
+    ; 4. 시뮬레이션 값 생성 (Echo Mode)
     ; -----------------------------------------------------
-    SplitStr $token[0], $msg_in, ","
+    ; 클라이언트에서 보낸 값을 그대로 반영 (Echo)
+    ; 사용자가 보낸 속도, 각도가 그대로 돌아오는지 확인
     
-    ; 5개 값 직접 수신
-    in_accel = Value($token[0])
-    in_rf    = Value($token[1])
-    in_rr    = Value($token[2])
-    in_lf    = Value($token[3])
-    in_lr    = Value($token[4])
-
-    ; -----------------------------------------------------
-    ; 4. 하드웨어 출력 (Driver Mode)
-    ; -----------------------------------------------------
-    ; 상위 제어기에서 계산된 각도를 그대로 적용
+    v_axis_1 = in_accel  ; Accel
+    v_axis_2 = in_rf     ; RF
+    v_axis_3 = in_rr     ; RR
+    v_axis_4 = in_lf     ; LF
+    v_axis_5 = in_lr     ; LR
     
-    q_axis_1 = in_accel  ; Accel / Valve
-    q_axis_2 = in_rf     ; RF Steer
-    q_axis_3 = in_rr     ; RR Steer
-    q_axis_4 = in_lf     ; LF Steer
-    q_axis_5 = in_lr     ; LR Steer
+    ; 추가: 에러 코드 테스트 (0 = Normal)
+    ; 특정 조건(속도 > 40)에서 에러 발생 시뮬레이션 가능
+    IF in_accel > 40.0 THEN
+       comm_err = 999 ; Simulated Error
+    ELSE
+       comm_err = 0
+    END
     
     ; -----------------------------------------------------
     ; 5. 상태 송신 (Feedback) - Binary Fixed Point (x100)
     ; -----------------------------------------------------
-    ; [Protocol] 24 Bytes: Accel(4), RF(4), RR(4), LF(4), LR(4), Err(4)
-    ; Big Endian 32-bit Integer
-    
     $msg_out = ""
     
-    ; Helper: Float -> Int32(x100) -> 2x Int16 -> Binary String
-    
     ; 1. Accel
-    val_int = Int(q_axis_1 * 100)
+    val_int = Int(v_axis_1 * 100)
     val_hi = Int(val_int / 65536)
     val_lo = val_int - (val_hi * 65536)
     IF val_int >= 0 GOTO skip_n1
@@ -132,7 +134,7 @@ skip_n1:
     $msg_out = $msg_out + $Int16B(val_hi) + $Int16B(val_lo)
     
     ; 2. RF
-    val_int = Int(q_axis_2 * 100)
+    val_int = Int(v_axis_2 * 100)
     val_hi = Int(val_int / 65536)
     val_lo = val_int - (val_hi * 65536)
     IF val_int >= 0 GOTO skip_n2
@@ -142,7 +144,7 @@ skip_n2:
     $msg_out = $msg_out + $Int16B(val_hi) + $Int16B(val_lo)
     
     ; 3. RR
-    val_int = Int(q_axis_3 * 100)
+    val_int = Int(v_axis_3 * 100)
     val_hi = Int(val_int / 65536)
     val_lo = val_int - (val_hi * 65536)
     IF val_int >= 0 GOTO skip_n3
@@ -152,7 +154,7 @@ skip_n3:
     $msg_out = $msg_out + $Int16B(val_hi) + $Int16B(val_lo)
     
     ; 4. LF
-    val_int = Int(q_axis_4 * 100)
+    val_int = Int(v_axis_4 * 100)
     val_hi = Int(val_int / 65536)
     val_lo = val_int - (val_hi * 65536)
     IF val_int >= 0 GOTO skip_n4
@@ -162,7 +164,7 @@ skip_n4:
     $msg_out = $msg_out + $Int16B(val_hi) + $Int16B(val_lo)
     
     ; 5. LR
-    val_int = Int(q_axis_5 * 100)
+    val_int = Int(v_axis_5 * 100)
     val_hi = Int(val_int / 65536)
     val_lo = val_int - (val_hi * 65536)
     IF val_int >= 0 GOTO skip_n5
@@ -171,12 +173,13 @@ skip_n4:
 skip_n5:
     $msg_out = $msg_out + $Int16B(val_hi) + $Int16B(val_lo)
     
-    ; 6. Error
-    val_int = comm_err
+    ; 6. Error (Fixed 0)
+    val_int = 0
     val_hi = Int(val_int / 65536)
     val_lo = val_int - (val_hi * 65536)
     $msg_out = $msg_out + $Int16B(val_hi) + $Int16B(val_lo)
     
     TCPSWrite h_client, $msg_out
 
+    WaitTime 0.1 ; 10Hz Update
     GOTO loop_start
