@@ -103,18 +103,13 @@ loop_start:
     ; -----------------------------------------------------
     ; 4. 하드웨어 출력 (Driver Mode)
     ; -----------------------------------------------------
-    ; 상위 제어기에서 계산된 각도를 그대로 적용  MoveJ 로 명령 출력
+    ; 상위 제어기에서 계산된 각도를 그대로 적용
     
     q_axis_1 = in_accel  ; Accel / Valve
     q_axis_2 = in_rf     ; RF Steer
     q_axis_3 = in_rr     ; RR Steer
     q_axis_4 = in_lf     ; LF Steer
     q_axis_5 = in_lr     ; LR Steer
-    
-    ; 4-1. 하드웨어 구동 (Motion)
-    Point #pmobile = Joint(q_axis_1, q_axis_2, q_axis_3, q_axis_4, q_axis_5)
-    MoveJ #pmobile
-
     
     ; -----------------------------------------------------
     ; 5. 상태 송신 (Feedback) - Binary Fixed Point (x100)
