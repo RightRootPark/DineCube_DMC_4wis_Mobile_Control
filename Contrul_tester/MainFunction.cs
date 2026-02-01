@@ -19,6 +19,7 @@ namespace Contrul_tester
         public event Action<string> OnLog;
         public event Action<bool> OnConnectionChanged;
         public event Action<double[], int> OnStatusReceived; // [Accel, RF, RR, LF, LR], ErrorCode
+        public event Action<bool, string> OnControlVerification; // Verification Result
         public event Action<string> OnPacketSent;
 
         // TCP Components
@@ -41,6 +42,7 @@ namespace Contrul_tester
         // Internal Calculations
         private double currentX = 0;
         private double currentC = 0;
+        private double[] lastSentValues = new double[5];
 
         // Constants
         private const double ACCEL_RATE = 2.0;
@@ -281,6 +283,37 @@ namespace Contrul_tester
                     else err = raw;
                 }
                 OnStatusReceived?.Invoke(vals, err);
+
+                // Verification Logic
+                bool isSuccess = true;
+                string failReason = "";
+
+                if (err != 0)
+                {
+                    isSuccess = false;
+                    failReason = $"Robot Error Code: {err}";
+                }
+                else
+                {
+                    for (int i = 0; i < 5; i++)
+                    {
+                        if (Math.Abs(vals[i] - lastSentValues[i]) > 5.0)
+                        {
+                            isSuccess = false;
+                            failReason = $"Value Mismatch on Axis {i + 1}: Sent={lastSentValues[i]:F1}, Recv={vals[i]:F2}";
+                            break;
+                        }
+                    }
+                }
+
+                if (!isSuccess)
+                {
+                    OnControlVerification?.Invoke(false, failReason);
+                }
+                else
+                {
+                    OnControlVerification?.Invoke(true, "Verified");
+                }
             }
             catch { }
         }
@@ -291,6 +324,13 @@ namespace Contrul_tester
             {
                 if (client != null && client.Connected && writer != null)
                 {
+                    // Store for verification
+                    lastSentValues[0] = accel;
+                    lastSentValues[1] = rf;
+                    lastSentValues[2] = rr;
+                    lastSentValues[3] = lf;
+                    lastSentValues[4] = lr;
+
                     string pkt = $"{accel:F1},{rf:F1},{rr:F1},{lf:F1},{lr:F1}";
                     await writer.WriteAsync(pkt);
                     await writer.FlushAsync();
