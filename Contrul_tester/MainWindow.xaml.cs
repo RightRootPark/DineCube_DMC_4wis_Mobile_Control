@@ -21,6 +21,7 @@ namespace Contrul_tester
             mainFunc.OnLog += Log;
             mainFunc.OnConnectionChanged += OnConnectionStatusChanged;
             mainFunc.OnStatusReceived += OnStatusUpdate;
+            mainFunc.OnControlVerification += OnControlVerificationResult;
             mainFunc.OnPacketSent += OnPacketSent;
 
             // Timer (updates logic periodically)
@@ -83,6 +84,27 @@ namespace Contrul_tester
             {
                 lblLastPacket.Text = packet;
             });
+        }
+
+        private void OnControlVerificationResult(bool success, string msg)
+        {
+            if (!success)
+            {
+                Log($"[Verify Fail] {msg}");
+                Dispatcher.Invoke(() =>
+                {
+                    statusLed.Fill = Brushes.Orange; // Warning Color
+                });
+            }
+            else
+            {
+                // Optionally revert color to Green if verified
+                Dispatcher.Invoke(() =>
+                {
+                    if (lblStatus.Text == "Connected")
+                        statusLed.Fill = Brushes.Green;
+                });
+            }
         }
 
         // ================= UI Actions =================
