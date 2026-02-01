@@ -238,24 +238,29 @@ namespace Contrul_tester
 
                 while (isConnected && client != null && client.Connected)
                 {
-                    if (stream != null && stream.DataAvailable)
+                    if (stream != null)
                     {
+                        // ⚡ Bolt Optimization: Use ReadAsync directly to avoid polling overhead
                         int read = await stream.ReadAsync(buffer, collected, 24 - collected);
-                        if (read > 0)
+                        if (read == 0)
                         {
-                            collected += read;
-                            lastReceivedTime = DateTime.Now;
+                            // Connection closed
+                            Disconnect();
+                            break;
+                        }
 
-                            if (collected == 24)
-                            {
-                                ProcessPacket(buffer);
-                                collected = 0;
-                            }
+                        collected += read;
+                        lastReceivedTime = DateTime.Now;
+
+                        if (collected == 24)
+                        {
+                            ProcessPacket(buffer);
+                            collected = 0;
                         }
                     }
                     else
                     {
-                        await Task.Delay(10);
+                        await Task.Delay(100);
                     }
                 }
             }
