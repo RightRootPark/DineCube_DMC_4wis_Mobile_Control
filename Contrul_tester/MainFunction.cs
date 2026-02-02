@@ -238,24 +238,24 @@ namespace Contrul_tester
 
                 while (isConnected && client != null && client.Connected)
                 {
-                    if (stream != null && stream.DataAvailable)
+                    if (stream != null)
                     {
+                        // Optimization: Await data directly instead of polling
                         int read = await stream.ReadAsync(buffer, collected, 24 - collected);
-                        if (read > 0)
-                        {
-                            collected += read;
-                            lastReceivedTime = DateTime.Now;
+                        if (read == 0) break;
 
-                            if (collected == 24)
-                            {
-                                ProcessPacket(buffer);
-                                collected = 0;
-                            }
+                        collected += read;
+                        lastReceivedTime = DateTime.Now;
+
+                        if (collected == 24)
+                        {
+                            ProcessPacket(buffer);
+                            collected = 0;
                         }
                     }
                     else
                     {
-                        await Task.Delay(10);
+                        break;
                     }
                 }
             }
@@ -263,6 +263,7 @@ namespace Contrul_tester
             {
                  // Handle disconnect primarily
             }
+            if (isConnected) Disconnect();
         }
 
         private void ProcessPacket(byte[] buffer)
