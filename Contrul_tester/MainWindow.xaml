@@ -75,7 +75,7 @@
 
         <!-- Status Monitor Panel -->
         <GroupBox Header="Robot Status Monitor" Grid.Row="3" Margin="0,0,0,10">
-            <UniformGrid Rows="1" Columns="6">
+            <UniformGrid Rows="1" Columns="7">
                 <!-- Headers and Values -->
                 <StackPanel Margin="5">
                     <TextBlock Text="Accel" FontWeight="Bold" HorizontalAlignment="Center"/>
@@ -100,6 +100,10 @@
                 <StackPanel Margin="5">
                     <TextBlock Text="Error" FontWeight="Bold" HorizontalAlignment="Center"/>
                     <TextBlock x:Name="lblStatErr" Text="0" HorizontalAlignment="Center" FontSize="16" Foreground="Red"/>
+                </StackPanel>
+                <StackPanel Margin="5">
+                    <TextBlock Text="Cycle (ms)" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="lblStatCycle" Text="0" HorizontalAlignment="Center" FontSize="16" Foreground="Purple"/>
                 </StackPanel>
             </UniformGrid>
         </GroupBox>

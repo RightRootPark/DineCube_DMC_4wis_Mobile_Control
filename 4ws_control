@@ -91,6 +91,19 @@ loop_start:
     ; -----------------------------------------------------
     ; 3. 데이터 파싱 ("accel,rf,rr,lf,lr")
     ; -----------------------------------------------------
+    ; 세미콜론(;)으로 패킷 분리 (Stickering 방지)
+    SplitStr $cmds[0], $msg_in, ";"
+    ; 첫 번째 완성된 패킷 사용 ($cmds[0])
+    ; (만약 버퍼에 여러 개가 와도, 가장 앞의 유효한 것 처리. 
+    ;  빠른 제어를 위해 마지막 것을 쓸 수도 있지만, 안정성을 위해 순차 처리 권장)
+    
+    $valid_cmd = $cmds[0]
+    ; 유효성 체크 (빈 문자열이면 무시)
+    cmd_len = Len($valid_cmd)
+    IF cmd_len < 3 THEN
+        GOTO loop_start
+    END
+
     SplitStr $token[0], $msg_in, ","
     
     ; 5개 값 직접 수신
@@ -103,18 +116,17 @@ loop_start:
     ; -----------------------------------------------------
     ; 4. 하드웨어 출력 (Driver Mode)
     ; -----------------------------------------------------
-    ; 상위 제어기에서 계산된 각도를 그대로 적용  MoveJ 로 명령 출력
+    ; 상위 제어기에서 계산된 각도를 그대로 적용
     
     q_axis_1 = in_accel  ; Accel / Valve
     q_axis_2 = in_rf     ; RF Steer
     q_axis_3 = in_rr     ; RR Steer
     q_axis_4 = in_lf     ; LF Steer
     q_axis_5 = in_lr     ; LR Steer
-    
-    ; 4-1. 하드웨어 구동 (Motion)
+
+        ; 4-1. 하드웨어 구동 (Motion)
     Point #pmobile = Joint(q_axis_1, q_axis_2, q_axis_3, q_axis_4, q_axis_5)
     MoveJ #pmobile
-
     
     ; -----------------------------------------------------
     ; 5. 상태 송신 (Feedback) - Binary Fixed Point (x100)

@@ -25,7 +25,7 @@ namespace Contrul_tester
 
             // Timer (updates logic periodically)
             uiTimer = new DispatcherTimer();
-            uiTimer.Interval = TimeSpan.FromMilliseconds(100);
+            uiTimer.Interval = TimeSpan.FromMilliseconds(200);
             uiTimer.Tick += (s, e) => mainFunc.UpdateControl();
             uiTimer.Start();
 
@@ -64,8 +64,14 @@ namespace Contrul_tester
             });
         }
 
-        private void OnStatusUpdate(double[] vals, int err)
+        private DateTime lastRenderTime = DateTime.MinValue;
+
+        private void OnStatusUpdate(double[] vals, int err, double ms)
         {
+            // Limit UI Update to ~30FPS (33ms)
+            if ((DateTime.Now - lastRenderTime).TotalMilliseconds < 33) return;
+            lastRenderTime = DateTime.Now;
+
             Dispatcher.Invoke(() =>
             {
                 lblStatAccel.Text = vals[0].ToString("F2");
@@ -74,6 +80,7 @@ namespace Contrul_tester
                 lblStatLF.Text    = vals[3].ToString("F2");
                 lblStatLR.Text    = vals[4].ToString("F2");
                 lblStatErr.Text   = err.ToString();
+                lblStatCycle.Text = ms.ToString("F0");
             });
         }
 

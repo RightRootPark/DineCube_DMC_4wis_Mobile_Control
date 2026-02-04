@@ -18,7 +18,7 @@ namespace Contrul_tester
         // Events for UI Updates
         public event Action<string> OnLog;
         public event Action<bool> OnConnectionChanged;
-        public event Action<double[], int> OnStatusReceived; // [Accel, RF, RR, LF, LR], ErrorCode
+        public event Action<double[], int, double> OnStatusReceived; // [Accel, RF, RR, LF, LR], ErrorCode, CycleTimeMs
         public event Action<string> OnPacketSent;
 
         // TCP Components
@@ -28,6 +28,7 @@ namespace Contrul_tester
         private StreamReader reader; // Not strict usage but good to have
         private bool isConnected = false;
         private DateTime lastReceivedTime;
+        private DateTime lastPacketTime = DateTime.Now;
 
         // Control State
         public DriveMode CurrentMode { get; private set; } = DriveMode.FourWS;
@@ -145,7 +146,12 @@ namespace Contrul_tester
             if (CurrentMode == DriveMode.Pivot)
             {
                 // Pivot Mode Logic
-                angleRF = -45.0; angleLF = 45.0; angleRR = 45.0; angleLR = -45.0;
+                // Requested: 2(RF)=-135, 3(RR)=135.
+                // 4(LF)=45, 5(LR)=-45 (Original values kept as per user request)
+                angleRF = -135.0; 
+                angleRR = 135.0; 
+                angleLF = 45.0; 
+                angleLR = -45.0;
 
                 if (isLeft) // CCW
                 {
@@ -214,13 +220,14 @@ namespace Contrul_tester
 
                 if (c > 0) // Left
                 {
-                    lf = angIn; lr = -angIn;
-                    rf = angOut; rr = -angOut;
+                    lf = -angIn; lr = angIn;    // LF: -angIn (Inverted), LR: angIn (Inverted)
+                    rf = angOut; rr = -angOut;  
                 }
                 else // Right
                 {
-                    rf = -angIn; rr = angIn;
-                    lf = -angOut; lr = angOut;
+                    rf = -angIn; rr = angIn;    
+                    lf = -(-angOut); lr = -angOut; // LF: angOut (Inverted), LR: -angOut (Inverted)
+                    // Simplified: lf = angOut
                 }
             }
             else
@@ -233,23 +240,77 @@ namespace Contrul_tester
         {
             try
             {
-                byte[] buffer = new byte[24];
+                byte[] buffer = new byte[1024];
                 int collected = 0;
 
                 while (isConnected && client != null && client.Connected)
                 {
                     if (stream != null && stream.DataAvailable)
                     {
-                        int read = await stream.ReadAsync(buffer, collected, 24 - collected);
+                        int read = await stream.ReadAsync(buffer, collected, buffer.Length - collected);
                         if (read > 0)
                         {
                             collected += read;
-                            lastReceivedTime = DateTime.Now;
-
-                            if (collected == 24)
+                            
+                            // Process multiple packets
+                            while (collected >= 26) // Header(2) + Data(24) = 26
                             {
-                                ProcessPacket(buffer);
-                                collected = 0;
+                                // Scan for Header 0xFE, 0xFE
+                                int headerIdx = -1;
+                                for (int i = 0; i < collected - 1; i++)
+                                {
+                                    if (buffer[i] == 0xFE && buffer[i+1] == 0xFE)
+                                    {
+                                        headerIdx = i;
+                                        break;
+                                    }
+                                }
+
+                                if (headerIdx >= 0)
+                                {
+                                    // If header is not at start, discard garbage before it
+                                    if (headerIdx > 0)
+                                    {
+                                        Array.Copy(buffer, headerIdx, buffer, 0, collected - headerIdx);
+                                        collected -= headerIdx;
+                                        continue; // Restart scan from new 0
+                                    }
+
+                                    // Header is at 0. Check if we have full packet
+                                    if (collected >= 26)
+                                    {
+                                        // Extract Data
+                                        byte[] payload = new byte[24];
+                                        Array.Copy(buffer, 2, payload, 0, 24);
+                                        ProcessPacket(payload);
+                                        lastReceivedTime = DateTime.Now;
+
+                                        // Shift remaining
+                                        int remaining = collected - 26;
+                                        if (remaining > 0) Array.Copy(buffer, 26, buffer, 0, remaining);
+                                        collected = remaining;
+                                    }
+                                }
+                                else
+                                {
+                                    // No header found in entire scan area?
+                                    // Keep last byte just in case it's first part of header (0xFE)
+                                    // Discard rest
+                                    if(collected > 0)
+                                    {
+                                        byte last = buffer[collected - 1];
+                                        if (last == 0xFE)
+                                        {
+                                            buffer[0] = 0xFE;
+                                            collected = 1;
+                                        }
+                                        else
+                                        {
+                                            collected = 0;
+                                        }
+                                    }
+                                    break; // Need more data
+                                }
                             }
                         }
                     }
@@ -280,7 +341,11 @@ namespace Contrul_tester
                     if (i < 5) vals[i] = raw / 100.0;
                     else err = raw;
                 }
-                OnStatusReceived?.Invoke(vals, err);
+
+                double ms = (DateTime.Now - lastPacketTime).TotalMilliseconds;
+                lastPacketTime = DateTime.Now;
+
+                OnStatusReceived?.Invoke(vals, err, ms);
             }
             catch { }
         }
@@ -291,7 +356,7 @@ namespace Contrul_tester
             {
                 if (client != null && client.Connected && writer != null)
                 {
-                    string pkt = $"{accel:F1},{rf:F1},{rr:F1},{lf:F1},{lr:F1}";
+                    string pkt = $"{accel:F1},{rf:F1},{rr:F1},{lf:F1},{lr:F1};";
                     await writer.WriteAsync(pkt);
                     await writer.FlushAsync();
                     OnPacketSent?.Invoke(pkt);
