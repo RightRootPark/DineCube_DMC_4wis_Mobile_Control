@@ -245,78 +245,76 @@ namespace Contrul_tester
 
                 while (isConnected && client != null && client.Connected)
                 {
-                    if (stream != null && stream.DataAvailable)
+                    if (stream == null) break;
+
+                    int read = await stream.ReadAsync(buffer, collected, buffer.Length - collected);
+                    if (read == 0)
                     {
-                        int read = await stream.ReadAsync(buffer, collected, buffer.Length - collected);
-                        if (read > 0)
+                        Disconnect();
+                        break;
+                    }
+
+                    collected += read;
+
+                    // Process multiple packets
+                    while (collected >= 26) // Header(2) + Data(24) = 26
+                    {
+                        // Scan for Header 0xFE, 0xFE
+                        int headerIdx = -1;
+                        for (int i = 0; i < collected - 1; i++)
                         {
-                            collected += read;
-                            
-                            // Process multiple packets
-                            while (collected >= 26) // Header(2) + Data(24) = 26
+                            if (buffer[i] == 0xFE && buffer[i + 1] == 0xFE)
                             {
-                                // Scan for Header 0xFE, 0xFE
-                                int headerIdx = -1;
-                                for (int i = 0; i < collected - 1; i++)
+                                headerIdx = i;
+                                break;
+                            }
+                        }
+
+                        if (headerIdx >= 0)
+                        {
+                            // If header is not at start, discard garbage before it
+                            if (headerIdx > 0)
+                            {
+                                Array.Copy(buffer, headerIdx, buffer, 0, collected - headerIdx);
+                                collected -= headerIdx;
+                                continue; // Restart scan from new 0
+                            }
+
+                            // Header is at 0. Check if we have full packet
+                            if (collected >= 26)
+                            {
+                                // Extract Data
+                                byte[] payload = new byte[24];
+                                Array.Copy(buffer, 2, payload, 0, 24);
+                                ProcessPacket(payload);
+                                lastReceivedTime = DateTime.Now;
+
+                                // Shift remaining
+                                int remaining = collected - 26;
+                                if (remaining > 0) Array.Copy(buffer, 26, buffer, 0, remaining);
+                                collected = remaining;
+                            }
+                        }
+                        else
+                        {
+                            // No header found in entire scan area?
+                            // Keep last byte just in case it's first part of header (0xFE)
+                            // Discard rest
+                            if (collected > 0)
+                            {
+                                byte last = buffer[collected - 1];
+                                if (last == 0xFE)
                                 {
-                                    if (buffer[i] == 0xFE && buffer[i+1] == 0xFE)
-                                    {
-                                        headerIdx = i;
-                                        break;
-                                    }
-                                }
-
-                                if (headerIdx >= 0)
-                                {
-                                    // If header is not at start, discard garbage before it
-                                    if (headerIdx > 0)
-                                    {
-                                        Array.Copy(buffer, headerIdx, buffer, 0, collected - headerIdx);
-                                        collected -= headerIdx;
-                                        continue; // Restart scan from new 0
-                                    }
-
-                                    // Header is at 0. Check if we have full packet
-                                    if (collected >= 26)
-                                    {
-                                        // Extract Data
-                                        byte[] payload = new byte[24];
-                                        Array.Copy(buffer, 2, payload, 0, 24);
-                                        ProcessPacket(payload);
-                                        lastReceivedTime = DateTime.Now;
-
-                                        // Shift remaining
-                                        int remaining = collected - 26;
-                                        if (remaining > 0) Array.Copy(buffer, 26, buffer, 0, remaining);
-                                        collected = remaining;
-                                    }
+                                    buffer[0] = 0xFE;
+                                    collected = 1;
                                 }
                                 else
                                 {
-                                    // No header found in entire scan area?
-                                    // Keep last byte just in case it's first part of header (0xFE)
-                                    // Discard rest
-                                    if(collected > 0)
-                                    {
-                                        byte last = buffer[collected - 1];
-                                        if (last == 0xFE)
-                                        {
-                                            buffer[0] = 0xFE;
-                                            collected = 1;
-                                        }
-                                        else
-                                        {
-                                            collected = 0;
-                                        }
-                                    }
-                                    break; // Need more data
+                                    collected = 0;
                                 }
                             }
+                            break; // Need more data
                         }
-                    }
-                    else
-                    {
-                        await Task.Delay(10);
                     }
                 }
             }
