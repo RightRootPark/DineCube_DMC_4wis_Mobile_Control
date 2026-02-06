@@ -245,9 +245,17 @@ namespace Contrul_tester
 
                 while (isConnected && client != null && client.Connected)
                 {
-                    if (stream != null && stream.DataAvailable)
+                    if (stream != null)
                     {
+                        // Optimization: Use ReadAsync directly instead of polling DataAvailable + Task.Delay.
+                        // This removes the ~10ms latency per poll cycle and responds immediately to incoming data.
                         int read = await stream.ReadAsync(buffer, collected, buffer.Length - collected);
+                        if (read == 0)
+                        {
+                            Disconnect();
+                            break;
+                        }
+
                         if (read > 0)
                         {
                             collected += read;
@@ -313,10 +321,6 @@ namespace Contrul_tester
                                 }
                             }
                         }
-                    }
-                    else
-                    {
-                        await Task.Delay(10);
                     }
                 }
             }
